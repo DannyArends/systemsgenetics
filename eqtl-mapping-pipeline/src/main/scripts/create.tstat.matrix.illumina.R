@@ -30,10 +30,9 @@ Illu <- Illu[IlluSort,]
 cellTypes <- unique(colnames(Illu))
 probes <- rownames(Illu)
 if(!file.exists("tstat.matrix.illumina.txt")){
-  cat("",cellTypes, file="Illout.txt",sep='\t')
-  cat("\n", file="Illout.txt", append=TRUE)
+  cat("",cellTypes, file="tstat.matrix.illumina.txt",sep='\t')
+  cat("\n", file="tstat.matrix.illumina.txt", append=TRUE)
   signLVL <- 0.05/nrow(Illu)
-  full <- NULL
   for(p in 1:nrow(Illu)){
     data <- NULL  
     for(celltype in cellTypes){
@@ -44,13 +43,9 @@ if(!file.exists("tstat.matrix.illumina.txt")){
       data <- cbind(data, sC)
     }
     if(p %% 100 == 0) cat("Done",p,"Out of",nrow(Illu),"\n")
-    cat(probes[p], data, file="Illout.txt", append=TRUE,sep='\t')
-    cat("\n", file="Illout.txt", append=TRUE)
-    #full <- rbind(full,data)
-    #colnames(full) <- cellTypes
-    #rownames(full) <- rownames(Illu)[1:p]
+    cat(probes[p], data, file="tstat.matrix.illumina.txt", append=TRUE,sep='\t')
+    cat("\n", file="tstat.matrix.illumina.txt", append=TRUE)
   }
-  write.table(full, file="tstat.matrix.illumina.txt", sep = '\t',quote=FALSE)
 }else{
   full <- read.csv("tstat.matrix.illumina.txt", sep='\t', row.names = 1)
 }
