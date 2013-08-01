@@ -17,12 +17,13 @@ import java.util.List;
 import java.util.Map;
 import org.apache.log4j.Logger;
 import org.molgenis.genotype.AbstractRandomAccessGenotypeData;
-import org.molgenis.genotype.Allele;
 import org.molgenis.genotype.Alleles;
 import org.molgenis.genotype.GenotypeData;
+import static org.molgenis.genotype.GenotypeData.BOOL_INCLUDE_SAMPLE;
 import org.molgenis.genotype.GenotypeDataException;
 import org.molgenis.genotype.Sample;
 import org.molgenis.genotype.Sequence;
+import org.molgenis.genotype.SimpleSequence;
 import org.molgenis.genotype.annotation.Annotation;
 import org.molgenis.genotype.annotation.CaseControlAnnotation;
 import org.molgenis.genotype.annotation.SampleAnnotation;
@@ -31,9 +32,11 @@ import org.molgenis.genotype.util.CalledDosageConvertor;
 import org.molgenis.genotype.util.GeneticVariantTreeSet;
 import org.molgenis.genotype.variant.GeneticVariant;
 import org.molgenis.genotype.variant.ReadOnlyGeneticVariant;
+import org.molgenis.genotype.variant.ReadOnlyGeneticVariantTriTyper;
 import org.molgenis.genotype.variant.sampleProvider.CachedSampleVariantProvider;
 import org.molgenis.genotype.variant.sampleProvider.SampleVariantUniqueIdProvider;
 import org.molgenis.genotype.variant.sampleProvider.SampleVariantsProvider;
+import org.molgenis.genotype.variantFilter.VariantFilter;
 import umcg.genetica.io.Gpio;
 import umcg.genetica.io.text.TextFile;
 
@@ -62,13 +65,22 @@ public class TriTyperGenotypeData extends AbstractRandomAccessGenotypeData imple
     private final FileChannel genotypeChannel;
     private final FileChannel dosageChannel;
     private final int sampleVariantProviderUniqueId;
+    private HashMap<String, SampleAnnotation> sampleAnnotationMap;
+    private HashMap<String, Sequence> sequences;
+	private final VariantFilter variantFilter;
 
     public TriTyperGenotypeData(String location) throws IOException {
         this(location, 1024);
     }
 
-    public TriTyperGenotypeData(String location, int cacheSize) throws IOException {
+	public TriTyperGenotypeData(String location, int cacheSize) throws IOException {
+		this(location, cacheSize, null);
+	}	
 
+    public TriTyperGenotypeData(String location, int cacheSize, VariantFilter variantFilter) throws IOException {
+
+		this.variantFilter = variantFilter;
+		
         if (cacheSize <= 0) {
             variantProvider = this;
         } else {
@@ -147,7 +159,7 @@ public class TriTyperGenotypeData extends AbstractRandomAccessGenotypeData imple
 
         genotypeHandle = new RandomAccessFile(genotypeDataFile, "r");
         genotypeChannel = genotypeHandle.getChannel();
-        
+
         sampleVariantProviderUniqueId = SampleVariantUniqueIdProvider.getNextUniqueId();
 
     }
@@ -222,6 +234,11 @@ public class TriTyperGenotypeData extends AbstractRandomAccessGenotypeData imple
         }
         t.close();
         LOG.info("Loaded " + samples.size() + " samples.\n" + visitedSamples.size() + " samples have annotation: " + numIncluded + " included, " + numFemale + " female, " + numMale + " male, " + numUnknownSex + " with unknown sex");
+
+        sampleAnnotationMap = new HashMap<String, SampleAnnotation>(3);
+        sampleAnnotationMap.put(GenotypeData.BOOL_INCLUDE_SAMPLE, new SampleAnnotation(BOOL_INCLUDE_SAMPLE, BOOL_INCLUDE_SAMPLE, null, Annotation.Type.BOOLEAN, SampleAnnotation.SampleAnnotationType.OTHER, false));
+        sampleAnnotationMap.put(GenotypeData.CASE_CONTROL_SAMPLE_ANNOTATION_NAME, new SampleAnnotation(CASE_CONTROL_SAMPLE_ANNOTATION_NAME, CASE_CONTROL_SAMPLE_ANNOTATION_NAME, null, Annotation.Type.CASECONTROL, SampleAnnotation.SampleAnnotationType.PHENOTYPE, false));
+        sampleAnnotationMap.put(GenotypeData.SEX_SAMPLE_ANNOTATION_NAME, new SampleAnnotation(SEX_SAMPLE_ANNOTATION_NAME, SEX_SAMPLE_ANNOTATION_NAME, null, Annotation.Type.SEX, SampleAnnotation.SampleAnnotationType.COVARIATE, false));
     }
 
     private Boolean parseIncludeExcludeStatus(String status) {
@@ -262,23 +279,44 @@ public class TriTyperGenotypeData extends AbstractRandomAccessGenotypeData imple
         }
         tfSNPMap.close();
 
-        snpToIndex = new HashMap<GeneticVariant, Integer>(allSNPs.size());
+        snpToIndex = new HashMap<GeneticVariant, Integer>();
+
+
         int index = 0;
         int numberOfSNPsWithAnnotation = 0;
+        sequences = new HashMap<String, Sequence>();
         for (String snp : allSNPs) {
             PosChr chrPos = snpToChr.get(snp);
             GeneticVariant variant;
             if (chrPos != null) {
-                variant = ReadOnlyGeneticVariant.createSnp(snp, chrPos.pos, chrPos.chr, variantProvider);
+
+                String chr;
+                if (!sequences.containsKey(chrPos.chr)) {
+                    chr = chrPos.chr;
+                    sequences.put(chrPos.chr, new SimpleSequence(chrPos.chr, 0, this));
+                } else {
+                    chr = sequences.get(chrPos.chr).getName();
+                }
+
+				variant = new ReadOnlyGeneticVariantTriTyper(snp, chrPos.getPos(), chr, variantProvider);
+
+
+
                 numberOfSNPsWithAnnotation++;
             } else {
-                variant = ReadOnlyGeneticVariant.createSnp(snp, 0, "" + 0, variantProvider);
+                variant = new ReadOnlyGeneticVariantTriTyper(snp, 0, "0", variantProvider);
             }
-            snps.add(variant);
-            snpToIndex.put(variant, index);
-            index++;
+			
+			if(variantFilter == null || variantFilter.doesVariantPassFilter(variant)){
+				snps.add(variant);
+				snpToIndex.put(variant, index);
+			}
+			
+			index++;
+            
         }
         tf.close();
+
         LOG.info("Loaded " + allSNPs.size() + " SNPs, " + numberOfSNPsWithAnnotation + " have annotation.");
     }
 
@@ -352,6 +390,7 @@ public class TriTyperGenotypeData extends AbstractRandomAccessGenotypeData imple
         // if there is a dosage file, read from there.. if not, conver genotypes.
         // now transcode into dosage..
 
+        // TODO: optimize this step: no need to get ALL alleles.
         float[] genotypes = CalledDosageConvertor.convertCalledAllelesToDosage(variantProvider.getSampleVariants(variant),
                 variant.getVariantAlleles(), variant.getRefAllele());
         if (imputedDosageDataFile != null) {
@@ -404,7 +443,7 @@ public class TriTyperGenotypeData extends AbstractRandomAccessGenotypeData imple
     public byte[] getSampleCalledDosage(GeneticVariant variant) {
         byte[] genotypes = CalledDosageConvertor.convertCalledAllelesToCalledDosage(variantProvider.getSampleVariants(variant),
                 variant.getVariantAlleles(), variant.getRefAllele());
-        
+
         return genotypes;
     }
 
@@ -442,34 +481,33 @@ public class TriTyperGenotypeData extends AbstractRandomAccessGenotypeData imple
     }
 
     @Override
-    protected Map<String, SampleAnnotation> getSampleAnnotationsMap() { // I have no idea what this is supposed to do
-        return Collections.emptyMap();
+    protected Map<String, SampleAnnotation> getSampleAnnotationsMap() {
+        return sampleAnnotationMap;
     }
 
     @Override
-    protected Map<String, ? extends Annotation> getVariantAnnotationsMap() { // I have no idea what this is supposed to do
+    protected Map<String, ? extends Annotation> getVariantAnnotationsMap() {
         return Collections.emptyMap();
     }
 
     @Override
     public List<String> getSeqNames() {
-        throw new UnsupportedOperationException("Not supported yet."); // Since we are not using SimpleSequence, this has no implementation yet
+        return new ArrayList<String>(sequences.keySet());
     }
 
     @Override
     public Iterable<Sequence> getSequences() {
-        throw new UnsupportedOperationException("Not supported yet."); // Since we are not using SimpleSequence, this has no implementation yet
+        return sequences.values();
     }
 
     @Override
     public Iterable<GeneticVariant> getVariantsByPos(String seqName, int startPos) {
-        List<GeneticVariant> variants = new ArrayList<GeneticVariant>(snps.getSequencePosVariants(seqName, startPos));
-        return variants;
+       return snps.getSequencePosVariants(seqName, startPos);
     }
 
     @Override
     public Iterable<GeneticVariant> getSequenceGeneticVariants(String seqName) {
-        throw new UnsupportedOperationException("Not supported yet."); // Since we are not using SimpleSequence, this has no implementation yet
+        return snps.getSequenceVariants(seqName);
     }
 
     @Override
