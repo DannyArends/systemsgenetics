@@ -16,6 +16,11 @@ Illu <- annotate.illumina.celltypes(Illu)
 WB <- read.illumina.wb()
 WBAnnot <- add.illumina.probes.information(WB)
 
+IlluWBHigh <- cor(WBAnnot[,-1])
+IlluWBCor <- names(which(apply(IlluWBHigh, 1, mean, na.rm=T) > 0.85))
+
+WBAnnot <- WBAnnot[,IlluWBCor]
+
 WBAnnot <- WBAnnot[which(rownames(WBAnnot) %in% rownames(Illu)),]
 Illu <- Illu[which(rownames(Illu) %in% rownames(WBAnnot)),]
 
@@ -23,8 +28,10 @@ IlluSort <- match(rownames(WBAnnot), rownames(Illu))
 Illu <- Illu[IlluSort,]
 
 cellTypes <- unique(colnames(Illu))
-
+probes <- rownames(Illu)
 if(!file.exists("tstat.matrix.illumina.txt")){
+  cat("",cellTypes, file="Illout.txt",sep='\t')
+  cat("\n", file="Illout.txt", append=TRUE)
   signLVL <- 0.05/nrow(Illu)
   full <- NULL
   for(p in 1:nrow(Illu)){
@@ -37,9 +44,11 @@ if(!file.exists("tstat.matrix.illumina.txt")){
       data <- cbind(data, sC)
     }
     if(p %% 100 == 0) cat("Done",p,"Out of",nrow(Illu),"\n")
-    full <- rbind(full,data)
-    colnames(full) <- cellTypes
-    rownames(full) <- rownames(Illu)[1:p]
+    cat(probes[p], data, file="Illout.txt", append=TRUE,sep='\t')
+    cat("\n", file="Illout.txt", append=TRUE)
+    #full <- rbind(full,data)
+    #colnames(full) <- cellTypes
+    #rownames(full) <- rownames(Illu)[1:p]
   }
   write.table(full, file="tstat.matrix.illumina.txt", sep = '\t',quote=FALSE)
 }else{
