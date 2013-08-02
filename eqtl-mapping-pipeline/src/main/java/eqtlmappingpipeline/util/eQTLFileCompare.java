@@ -2,13 +2,16 @@
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
  */
-package eqtlmappingpipeline.pcaoptimum;
+package eqtlmappingpipeline.util;
 
 import eqtlmappingpipeline.binarymeta.meta.graphics.ZScorePlot;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import umcg.genetica.console.ConsoleGUIElems;
 import umcg.genetica.io.text.TextFile;
 import umcg.genetica.io.trityper.util.BaseAnnot;
 
@@ -18,12 +21,76 @@ import umcg.genetica.io.trityper.util.BaseAnnot;
  */
 public class eQTLFileCompare {
 
-    int nrShared = 0;
-    int nrOpposite = 0;
+    private int nrShared = 0;
+    private int nrOpposite = 0;
+
+    public int getNrShared() {
+        return nrShared;
+    }
+
+    public int getNrOpposite() {
+        return nrOpposite;
+    }
+
+    public eQTLFileCompare() {
+    }
+
+    public eQTLFileCompare(String[] args) {
+
+
+        String out = null;
+        String file1 = null;
+        String file2 = null;
+        boolean matchOnGeneName = false;
+
+        for (int i = 0; i < args.length; i++) {
+            String arg = args[i];
+            String val = null;
+
+            if (i + 1 < args.length) {
+                val = args[i + 1];
+            }
+
+            if (arg.equals("--out")) {
+                out = val;
+            } else if (arg.equals("--file1")) {
+                file1 = val;
+            } else if (arg.equals("--file2")) {
+                file2 = val;
+            } else if (arg.equals("--genebased")) {
+                matchOnGeneName = true;
+            }
+        }
+
+        if (out != null && file1 != null && file2 != null) {
+            try {
+                compareOverlapAndZScoreDirectionTwoEQTLFiles(file1, file2, out, matchOnGeneName);
+            } catch (IOException ex) {
+                Logger.getLogger(eQTLFileCompare.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (Exception ex) {
+                Logger.getLogger(eQTLFileCompare.class.getName()).log(Level.SEVERE, null, ex);
+            }
+
+        } else {
+            printUsage();
+        }
+    }
+
+    private void printUsage() {
+        System.out.print("QTL File comparison\n" + ConsoleGUIElems.LINE);
+        System.out.println("Compares two eQTL files with each other.");
+
+        System.out.print("Command line options:\n" + ConsoleGUIElems.LINE);
+
+        System.out.println("--out\t\tstring\t\tOutput file name\n"
+                + "--file1\t\tstring\t\tLocation of file 1\n"
+                + "--file2\t\tstring\t\tLocation of file 2\n"
+                + "--genebased\t\t\tPerform comparison on the basis of gene names (optional, defaults to probe based comparison)\n");
+    }
 
     public void compareOverlapAndZScoreDirectionTwoEQTLFiles(String file1, String file2, String outputFile, boolean matchOnGeneName) throws IOException, Exception {
 
-        
+
         double filterOnFDR = -1; //Do we want to use another FDR measure? When set to -1 this is not used at all.
 
         HashMap<String, String> hashConvertProbeNames = new HashMap<String, String>(); //When comparing two eQTL files, run on different platforms, we can convert the probe names from one platform to the other, accommodating this comparison, example: hashConvertProbeNames.put(probeNameInFile1, equivalentProbeNameInFile2);
@@ -108,7 +175,7 @@ public class eQTLFileCompare {
         TextFile log = new TextFile(outputFile + "-eQTLComparisonLog.txt", TextFile.W);
         int lineno = 1;
         String[] data = in.readLineElemsReturnObjects(TextFile.tab);
-        TextFile identicalOut = new TextFile(outputFile+"-eQTLsWithIdenticalDirecton.txt.gz", TextFile.W);
+        TextFile identicalOut = new TextFile(outputFile + "-eQTLsWithIdenticalDirecton.txt.gz", TextFile.W);
         while (data != null) {
 
             if (filterOnFDR == -1 || Double.parseDouble(data[18]) <= filterOnFDR) {
@@ -341,6 +408,11 @@ public class eQTLFileCompare {
         if (valsX.length > 2) {
             double correlation = JSci.maths.ArrayMath.correlation(valsX, valsY);
             double r2 = correlation * correlation;
+
+            /*
+             * randomEngine = new cern.jet.random.engine.DRand();
+             tDistColt = new cern.jet.random.StudentT(olsY.length - 4, randomEngine);
+             */
             cern.jet.random.tdouble.engine.DoubleRandomEngine randomEngine = new cern.jet.random.tdouble.engine.DRand();
             cern.jet.random.tdouble.StudentT tDistColt = new cern.jet.random.tdouble.StudentT(valsX.length - 2, randomEngine);
             double pValuePearson = 1;

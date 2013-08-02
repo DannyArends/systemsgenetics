@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import umcg.genetica.console.ProgressBar;
+import umcg.genetica.containers.SortableSNP;
 import umcg.genetica.io.Gpio;
 import umcg.genetica.io.text.TextFile;
 import umcg.genetica.io.trityper.SNP;
@@ -322,7 +323,7 @@ public class QCPCA {
 
                     // sqrt[(1—r2)/(N—2)]
 
-                    cern.jet.random.tdouble.StudentT tDistColt = new cern.jet.random.tdouble.StudentT(df, (new cern.jet.random.tdouble.engine.DRand()));
+                    cern.jet.random.tdouble.StudentT  tDistColt = new cern.jet.random.tdouble.StudentT(df, (new cern.jet.random.tdouble.engine.DRand()));
 
                     double tTestPValue1 = tDistColt.cdf(t);
                     if (tTestPValue1 < bonferroni) {
