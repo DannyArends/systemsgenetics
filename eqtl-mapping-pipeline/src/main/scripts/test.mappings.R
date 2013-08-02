@@ -25,8 +25,8 @@ genes <- unique(as.character(WBillu[,1]))
 ilGene <- as.character(WBillu[,1])
 afGene <- as.character(WBaffy[,1])
 MeanMatrix <- NULL
-        cat("",file="WB.Affy.txt")
-        cat("",file="WB.Illu.txt")
+cat("",file="WB.Affy.txt")
+cat("",file="WB.Illu.txt")
 cnt <- 1
 for(gene in genes){
     illuID <- which(ilGene == gene)
@@ -39,3 +39,5 @@ for(gene in genes){
     if(cnt %% 100 == 0) cat(cnt,length(genes),"\n")
     cnt <- cnt+1
 }
+
+IlluWB <- read.table("WB.Illu.txt",sep='\t')
